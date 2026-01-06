@@ -2,7 +2,10 @@ import birdie
 import gleam/dynamic/decode
 import gleam/json
 import gleam/option.{None, Some}
-import starlet.{AssistantMessage, Request, ToolResultMessage, UserMessage}
+import starlet.{
+  AssistantMessage, Base64Image, ImagePart, Request, TextPart, ToolResultMessage,
+  UserMessage,
+}
 import starlet/gemini
 import starlet/tool
 
@@ -65,7 +68,7 @@ pub fn encode_simple_request_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -83,7 +86,7 @@ pub fn encode_request_with_system_prompt_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: Some("You are helpful"),
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -101,7 +104,7 @@ pub fn encode_request_with_options_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: Some(0.7),
       max_tokens: Some(1000),
@@ -120,9 +123,9 @@ pub fn encode_request_with_conversation_test() {
       model: "gemini-2.5-flash",
       system_prompt: None,
       messages: [
-        UserMessage("Hello"),
+        UserMessage([TextPart("Hello")]),
         AssistantMessage("Hi there!", []),
-        UserMessage("How are you?"),
+        UserMessage([TextPart("How are you?")]),
       ],
       tools: [],
       temperature: None,
@@ -141,7 +144,7 @@ pub fn encode_request_with_thinking_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: None,
-      messages: [UserMessage("Think about this")],
+      messages: [UserMessage([TextPart("Think about this")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -165,7 +168,7 @@ pub fn encode_request_with_thinking_dynamic_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: None,
-      messages: [UserMessage("Think about this")],
+      messages: [UserMessage([TextPart("Think about this")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -186,7 +189,7 @@ pub fn encode_request_with_thinking_off_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: None,
-      messages: [UserMessage("No thinking please")],
+      messages: [UserMessage([TextPart("No thinking please")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -224,7 +227,7 @@ pub fn encode_request_with_tools_test() {
     Request(
       model: "gemini-2.5-flash",
       system_prompt: None,
-      messages: [UserMessage("What's the weather?")],
+      messages: [UserMessage([TextPart("What's the weather?")])],
       tools: [weather_tool],
       temperature: None,
       max_tokens: None,
@@ -250,7 +253,7 @@ pub fn encode_request_with_tool_result_test() {
       model: "gemini-2.5-flash",
       system_prompt: None,
       messages: [
-        UserMessage("What's the weather in Paris?"),
+        UserMessage([TextPart("What's the weather in Paris?")]),
         AssistantMessage("", [tool_call]),
         ToolResultMessage("gemini-0", "get_weather", tool_result),
       ],
@@ -264,6 +267,29 @@ pub fn encode_request_with_tool_result_test() {
   gemini.encode_request(req, default_ext())
   |> json.to_string
   |> birdie.snap("gemini encode request with tool result")
+}
+
+pub fn encode_request_with_image_test() {
+  let req =
+    Request(
+      model: "gemini-2.5-flash",
+      system_prompt: None,
+      messages: [
+        UserMessage([
+          TextPart("What's in this image?"),
+          ImagePart(Base64Image("image/png", "base64data...")),
+        ]),
+      ],
+      tools: [],
+      temperature: None,
+      max_tokens: None,
+      json_schema: None,
+      timeout_ms: 60_000,
+    )
+
+  gemini.encode_request(req, default_ext())
+  |> json.to_string
+  |> birdie.snap("gemini encode request with image")
 }
 
 // Response decoding tests

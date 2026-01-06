@@ -43,15 +43,14 @@
 //// - Requires Claude Code CLI to be installed locally
 
 import gleam/dynamic/decode
-import gleam/json.{type Json}
+import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/result
 import gleam/string
 import starlet.{
   type Chat, type Client, type ContentPart, type Message, type Request,
-  type Response, type StarletError, AssistantMessage, Chat, ProviderConfig,
-  Response, TextPart, ToolResultMessage, UserMessage,
+  type Response, type StarletError, Chat, ProviderConfig, Response, TextPart,
+  UserMessage,
 }
 
 /// Claude Code provider extension type.
