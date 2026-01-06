@@ -39,9 +39,10 @@ import gleam/result
 import gleam/string
 import gleam/uri
 import starlet.{
-  type Chat, type Client, type Message, type Request, type Response,
-  type StarletError, type Turn, AssistantMessage, Chat, ProviderConfig, Response,
-  ToolResultMessage, UserMessage,
+  type Chat, type Client, type ContentPart, type Message, type Request,
+  type Response, type StarletError, type Turn, AssistantMessage, Base64Image,
+  Chat, ImagePart, ProviderConfig, Response, TextPart, ToolResultMessage,
+  UrlImage, UserMessage,
 }
 import starlet/internal/http as internal_http
 import starlet/tool
@@ -224,11 +225,24 @@ fn build_messages(
   let chat_msgs =
     list.map(messages, fn(msg) {
       case msg {
-        UserMessage(content) ->
-          json.object([
-            #("role", json.string("user")),
-            #("content", json.string(content)),
-          ])
+        UserMessage(content) -> {
+          // Ollama uses a separate "images" array for base64 images
+          let text = extract_text_from_parts(content)
+          let images = extract_images_from_parts(content)
+          case images {
+            [] ->
+              json.object([
+                #("role", json.string("user")),
+                #("content", json.string(text)),
+              ])
+            _ ->
+              json.object([
+                #("role", json.string("user")),
+                #("content", json.string(text)),
+                #("images", json.array(images, json.string)),
+              ])
+          }
+        }
         AssistantMessage(content, tool_calls) ->
           case tool_calls {
             [] ->
@@ -313,6 +327,32 @@ fn build_tools(tools: List(tool.Definition)) -> Option(Json) {
         }),
       )
   }
+}
+
+/// Extracts text content from content parts, joining all text parts.
+fn extract_text_from_parts(parts: List(ContentPart)) -> String {
+  list.filter_map(parts, fn(part) {
+    case part {
+      TextPart(text) -> Ok(text)
+      ImagePart(UrlImage(url)) ->
+        // Ollama doesn't support URL images - include as text
+        Ok("[Image from URL: " <> url <> "]")
+      ImagePart(Base64Image(_, _)) -> Error(Nil)
+    }
+  })
+  |> string.join("")
+}
+
+/// Extracts base64 image data from content parts.
+/// Returns a list of base64-encoded strings (without the data URI prefix).
+/// Note: Ollama only supports base64 images, not URLs.
+fn extract_images_from_parts(parts: List(ContentPart)) -> List(String) {
+  list.filter_map(parts, fn(part) {
+    case part {
+      ImagePart(Base64Image(_, data)) -> Ok(data)
+      _ -> Error(Nil)
+    }
+  })
 }
 
 /// Decodes a JSON response from the Ollama `/api/chat` endpoint.

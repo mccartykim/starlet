@@ -38,9 +38,10 @@ import gleam/result
 import gleam/string
 import gleam/uri
 import starlet.{
-  type Chat, type Client, type Message, type Request, type Response,
-  type StarletError, type Turn, AssistantMessage, Chat, ProviderConfig,
-  ToolResultMessage, UserMessage,
+  type Chat, type Client, type ContentPart, type Message, type Request,
+  type Response, type StarletError, type Turn, AssistantMessage, Base64Image,
+  Chat, ImagePart, ProviderConfig, TextPart, ToolResultMessage, UrlImage,
+  UserMessage,
 }
 import starlet/internal/http as internal_http
 import starlet/tool
@@ -244,12 +245,7 @@ fn build_contents(messages: List(Message)) -> List(Json) {
       UserMessage(content) ->
         json.object([
           #("role", json.string("user")),
-          #(
-            "parts",
-            json.array([json.object([#("text", json.string(content))])], fn(p) {
-              p
-            }),
-          ),
+          #("parts", encode_content_parts(content)),
         ])
       AssistantMessage(content, tool_calls) ->
         case tool_calls {
@@ -316,6 +312,34 @@ fn build_contents(messages: List(Message)) -> List(Json) {
           ),
         ])
       }
+    }
+  })
+}
+
+/// Encodes content parts for Gemini's parts array format.
+/// Gemini uses: [{text: "..."}, {inlineData: {mimeType: "...", data: "..."}}]
+/// Note: URL images are not directly supported by Gemini inline - they require
+/// the File API. For now, URLs are encoded as text placeholders.
+fn encode_content_parts(parts: List(ContentPart)) -> Json {
+  json.array(parts, fn(part) {
+    case part {
+      TextPart(text) -> json.object([#("text", json.string(text))])
+      ImagePart(Base64Image(media_type, data)) ->
+        json.object([
+          #(
+            "inlineData",
+            json.object([
+              #("mimeType", json.string(media_type)),
+              #("data", json.string(data)),
+            ]),
+          ),
+        ])
+      ImagePart(UrlImage(url)) ->
+        // Gemini doesn't support URL images directly inline.
+        // Users should use base64 or the File API for URL images.
+        json.object([
+          #("text", json.string("[Image from URL: " <> url <> "]")),
+        ])
     }
   })
 }
@@ -479,11 +503,11 @@ pub fn decode_error_response(body: String) -> Result(String, Nil) {
 }
 
 /// Internal type for decoding response parts.
-type Part {
-  TextPart(String)
-  FunctionCallPart(tool.Call)
-  ThoughtPart(String)
-  SkippedPart
+type ResponsePart {
+  ResponseTextPart(String)
+  ResponseFunctionCallPart(tool.Call)
+  ResponseThoughtPart(String)
+  ResponseSkippedPart
 }
 
 /// Decodes a response from the Gemini generateContent endpoint.
@@ -527,50 +551,50 @@ pub fn decode_response(
   }
 }
 
-fn decode_text_part() -> decode.Decoder(Part) {
+fn decode_text_part() -> decode.Decoder(ResponsePart) {
   use text <- decode.field("text", decode.string)
-  decode.success(TextPart(text))
+  decode.success(ResponseTextPart(text))
 }
 
-fn decode_function_call_part() -> decode.Decoder(Part) {
+fn decode_function_call_part() -> decode.Decoder(ResponsePart) {
   use call <- decode.field("functionCall", {
     use name <- decode.field("name", decode.string)
     use arguments <- decode.field("args", decode.dynamic)
     decode.success(#(name, arguments))
   })
   let #(name, arguments) = call
-  decode.success(FunctionCallPart(tool.Call(id: "", name: name, arguments:)))
+  decode.success(ResponseFunctionCallPart(tool.Call(id: "", name: name, arguments:)))
 }
 
-fn decode_thought_part() -> decode.Decoder(Part) {
+fn decode_thought_part() -> decode.Decoder(ResponsePart) {
   use is_thought <- decode.field("thought", decode.bool)
   case is_thought {
     True -> {
       use text <- decode.field("text", decode.string)
-      decode.success(ThoughtPart(text))
+      decode.success(ResponseThoughtPart(text))
     }
-    False -> decode.failure(ThoughtPart(""), "thought is false")
+    False -> decode.failure(ResponseThoughtPart(""), "thought is false")
   }
 }
 
-fn decode_skipped_part() -> decode.Decoder(Part) {
-  decode.success(SkippedPart)
+fn decode_skipped_part() -> decode.Decoder(ResponsePart) {
+  decode.success(ResponseSkippedPart)
 }
 
-fn extract_text(parts: List(Part)) -> String {
+fn extract_text(parts: List(ResponsePart)) -> String {
   list.filter_map(parts, fn(part) {
     case part {
-      TextPart(text) -> Ok(text)
+      ResponseTextPart(text) -> Ok(text)
       _ -> Error(Nil)
     }
   })
   |> string.join("")
 }
 
-fn extract_tool_calls(parts: List(Part)) -> List(tool.Call) {
+fn extract_tool_calls(parts: List(ResponsePart)) -> List(tool.Call) {
   list.index_fold(parts, [], fn(acc, part, index) {
     case part {
-      FunctionCallPart(call) -> {
+      ResponseFunctionCallPart(call) -> {
         let id = "gemini-" <> int.to_string(index)
         [tool.Call(..call, id: id), ..acc]
       }
@@ -580,11 +604,11 @@ fn extract_tool_calls(parts: List(Part)) -> List(tool.Call) {
   |> list.reverse
 }
 
-fn extract_thinking(parts: List(Part)) -> Option(String) {
+fn extract_thinking(parts: List(ResponsePart)) -> Option(String) {
   let thinking_texts =
     list.filter_map(parts, fn(part) {
       case part {
-        ThoughtPart(text) -> Ok(text)
+        ResponseThoughtPart(text) -> Ok(text)
         _ -> Error(Nil)
       }
     })

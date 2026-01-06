@@ -42,6 +42,7 @@
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import jscheam/schema
 import starlet/tool
 
@@ -64,11 +65,73 @@ pub type StarletError {
   RateLimited(retry_after: Option(Int))
 }
 
+/// Source for an image - either base64-encoded data or a URL.
+///
+/// ## Base64 Example
+/// ```gleam
+/// Base64Image(media_type: "image/jpeg", data: "...")
+/// ```
+///
+/// ## URL Example
+/// ```gleam
+/// UrlImage(url: "https://example.com/image.jpg")
+/// ```
+pub type ImageSource {
+  /// Base64-encoded image data with its MIME type (e.g., "image/jpeg", "image/png")
+  Base64Image(media_type: String, data: String)
+  /// URL to a publicly accessible image
+  UrlImage(url: String)
+}
+
+/// A part of a message's content - either text or an image.
+///
+/// Used with `user_content()` to build multimodal messages.
+///
+/// ## Example
+/// ```gleam
+/// starlet.chat(client, "claude-sonnet-4-20250514")
+/// |> starlet.user_content([
+///      TextPart("What's in this image?"),
+///      ImagePart(Base64Image("image/png", base64_data)),
+///    ])
+/// |> starlet.send()
+/// ```
+pub type ContentPart {
+  /// Text content
+  TextPart(text: String)
+  /// Image content
+  ImagePart(source: ImageSource)
+}
+
 @internal
 pub type Message {
-  UserMessage(content: String)
+  UserMessage(content: List(ContentPart))
   AssistantMessage(content: String, tool_calls: List(tool.Call))
   ToolResultMessage(call_id: String, name: String, content: String)
+}
+
+/// Extracts just the text from content parts, ignoring images.
+/// Useful for providers that need a text-only fallback.
+@internal
+pub fn content_to_text(content: List(ContentPart)) -> String {
+  list.filter_map(content, fn(part) {
+    case part {
+      TextPart(text) -> Ok(text)
+      ImagePart(_) -> Error(Nil)
+    }
+  })
+  |> string.join("")
+}
+
+/// Checks if content contains any images.
+@internal
+pub fn content_has_images(content: List(ContentPart)) -> Bool {
+  list.any(content, fn(part) {
+    case part {
+      ImagePart(_) -> True
+      TextPart(_) -> False
+    }
+  })
 }
 
 @internal
@@ -245,11 +308,36 @@ pub fn system(
 /// Adds a user message to the chat.
 ///
 /// This transitions the chat to the `Ready` state, allowing it to be sent.
+/// For multimodal content (text + images), use `user_content()` instead.
 pub fn user(
   chat: Chat(tools_state, format, state, ext),
   text: String,
 ) -> Chat(tools_state, format, Ready, ext) {
-  Chat(..chat, messages: list.append(chat.messages, [UserMessage(text)]))
+  Chat(
+    ..chat,
+    messages: list.append(chat.messages, [UserMessage([TextPart(text)])]),
+  )
+}
+
+/// Adds a multimodal user message with text and/or images.
+///
+/// This transitions the chat to the `Ready` state, allowing it to be sent.
+///
+/// ## Example
+/// ```gleam
+/// starlet.chat(client, "gpt-4.1")
+/// |> starlet.user_content([
+///      TextPart("Describe these images:"),
+///      ImagePart(UrlImage("https://example.com/cat.jpg")),
+///      ImagePart(Base64Image("image/png", base64_data)),
+///    ])
+/// |> starlet.send()
+/// ```
+pub fn user_content(
+  chat: Chat(tools_state, format, state, ext),
+  content: List(ContentPart),
+) -> Chat(tools_state, format, Ready, ext) {
+  Chat(..chat, messages: list.append(chat.messages, [UserMessage(content)]))
 }
 
 /// Adds an assistant message to the chat history.

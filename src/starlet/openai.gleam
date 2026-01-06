@@ -39,9 +39,10 @@ import gleam/result
 import gleam/string
 import gleam/uri
 import starlet.{
-  type Chat, type Client, type Message, type Request, type Response,
-  type StarletError, type Turn, AssistantMessage, Chat, ProviderConfig, Response,
-  ToolResultMessage, UserMessage,
+  type Chat, type Client, type ContentPart, type Message, type Request,
+  type Response, type StarletError, type Turn, AssistantMessage, Base64Image,
+  Chat, ImagePart, ProviderConfig, Response, TextPart, ToolResultMessage,
+  UrlImage, UserMessage,
 }
 import starlet/internal/http as internal_http
 import starlet/tool
@@ -266,6 +267,31 @@ fn encode_reasoning_effort(effort: ReasoningEffort) -> Json {
   }
 }
 
+/// Encodes content parts for OpenAI's Responses API format.
+/// OpenAI uses: [{type: "input_text", text: "..."}, {type: "input_image", image_url: "..."}]
+fn encode_content_parts(parts: List(ContentPart)) -> Json {
+  json.array(parts, fn(part) {
+    case part {
+      TextPart(text) ->
+        json.object([
+          #("type", json.string("input_text")),
+          #("text", json.string(text)),
+        ])
+      ImagePart(UrlImage(url)) ->
+        json.object([
+          #("type", json.string("input_image")),
+          #("image_url", json.string(url)),
+        ])
+      ImagePart(Base64Image(media_type, data)) ->
+        // OpenAI accepts data URIs for base64 images
+        json.object([
+          #("type", json.string("input_image")),
+          #("image_url", json.string("data:" <> media_type <> ";base64," <> data)),
+        ])
+    }
+  })
+}
+
 fn build_input(
   system_prompt: Option(String),
   messages: List(Message),
@@ -286,7 +312,7 @@ fn build_input(
         UserMessage(content) -> [
           json.object([
             #("role", json.string("user")),
-            #("content", json.string(content)),
+            #("content", encode_content_parts(content)),
           ]),
         ]
         AssistantMessage(content, tool_calls) ->

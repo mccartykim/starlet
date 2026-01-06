@@ -45,9 +45,10 @@ import gleam/result
 import gleam/string
 import gleam/uri
 import starlet.{
-  type Chat, type Client, type Message, type Request, type Response,
-  type StarletError, type Turn, AssistantMessage, Chat, ProviderConfig, Response,
-  ToolResultMessage, UserMessage,
+  type Chat, type Client, type ContentPart, type Message, type Request,
+  type Response, type StarletError, type Turn, AssistantMessage, Base64Image,
+  Chat, ImagePart, ProviderConfig, Response, TextPart, ToolResultMessage,
+  UrlImage, UserMessage,
 }
 import starlet/internal/http as internal_http
 import starlet/tool
@@ -292,6 +293,40 @@ fn encode_tools(tools: List(tool.Definition)) -> Json {
   })
 }
 
+/// Encodes content parts for Anthropic's content block format.
+/// Anthropic uses: [{type: "text", text: "..."}, {type: "image", source: {...}}]
+fn encode_content_parts(parts: List(ContentPart)) -> Json {
+  json.array(parts, fn(part) {
+    case part {
+      TextPart(text) ->
+        json.object([#("type", json.string("text")), #("text", json.string(text))])
+      ImagePart(Base64Image(media_type, data)) ->
+        json.object([
+          #("type", json.string("image")),
+          #(
+            "source",
+            json.object([
+              #("type", json.string("base64")),
+              #("media_type", json.string(media_type)),
+              #("data", json.string(data)),
+            ]),
+          ),
+        ])
+      ImagePart(UrlImage(url)) ->
+        json.object([
+          #("type", json.string("image")),
+          #(
+            "source",
+            json.object([
+              #("type", json.string("url")),
+              #("url", json.string(url)),
+            ]),
+          ),
+        ])
+    }
+  })
+}
+
 fn encode_messages(messages: List(Message)) -> List(Json) {
   encode_messages_acc(messages, [])
   |> list.reverse
@@ -306,7 +341,7 @@ fn encode_messages_acc(messages: List(Message), acc: List(Json)) -> List(Json) {
           let encoded =
             json.object([
               #("role", json.string("user")),
-              #("content", json.string(content)),
+              #("content", encode_content_parts(content)),
             ])
           encode_messages_acc(rest, [encoded, ..acc])
         }

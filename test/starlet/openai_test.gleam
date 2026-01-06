@@ -2,7 +2,10 @@ import birdie
 import gleam/dynamic/decode
 import gleam/json
 import gleam/option.{None, Some}
-import starlet.{AssistantMessage, Request, ToolResultMessage, UserMessage}
+import starlet.{
+  AssistantMessage, Base64Image, ImagePart, Request, TextPart, ToolResultMessage,
+  UrlImage, UserMessage,
+}
 import starlet/openai
 import starlet/tool
 
@@ -15,7 +18,7 @@ pub fn encode_simple_request_test() {
     Request(
       model: "gpt-5-nano",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -33,7 +36,7 @@ pub fn encode_request_with_system_prompt_test() {
     Request(
       model: "gpt-5-nano",
       system_prompt: Some("Be helpful"),
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -51,7 +54,7 @@ pub fn encode_request_with_previous_response_id_test() {
     Request(
       model: "gpt-5-nano",
       system_prompt: None,
-      messages: [UserMessage("Follow up")],
+      messages: [UserMessage([TextPart("Follow up")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -91,7 +94,7 @@ pub fn encode_request_with_tools_test() {
     Request(
       model: "gpt-5-nano",
       system_prompt: None,
-      messages: [UserMessage("What's the weather?")],
+      messages: [UserMessage([TextPart("What's the weather?")])],
       tools: [weather_tool],
       temperature: None,
       max_tokens: None,
@@ -117,7 +120,7 @@ pub fn encode_request_with_tool_result_test() {
       model: "gpt-5-nano",
       system_prompt: None,
       messages: [
-        UserMessage("What's the weather in Paris?"),
+        UserMessage([TextPart("What's the weather in Paris?")]),
         AssistantMessage("", [tool_call]),
         ToolResultMessage("call_123", "get_weather", tool_result),
       ],
@@ -138,7 +141,7 @@ pub fn encode_request_with_options_test() {
     Request(
       model: "gpt-5-nano",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: Some(0.7),
       max_tokens: Some(1000),
@@ -267,7 +270,7 @@ pub fn encode_request_with_reasoning_effort_test() {
     Request(
       model: "gpt-5-nano",
       system_prompt: None,
-      messages: [UserMessage("Think hard about this")],
+      messages: [UserMessage([TextPart("Think hard about this")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -285,4 +288,27 @@ pub fn encode_request_with_reasoning_effort_test() {
   openai.encode_request(req, ext)
   |> json.to_string
   |> birdie.snap("openai encode request with reasoning effort")
+}
+
+pub fn encode_request_with_image_test() {
+  let req =
+    Request(
+      model: "gpt-4.1",
+      system_prompt: None,
+      messages: [
+        UserMessage([
+          TextPart("What's in this image?"),
+          ImagePart(UrlImage("https://example.com/cat.jpg")),
+        ]),
+      ],
+      tools: [],
+      temperature: None,
+      max_tokens: None,
+      json_schema: None,
+      timeout_ms: 60_000,
+    )
+
+  openai.encode_request(req, default_ext())
+  |> json.to_string
+  |> birdie.snap("openai encode request with image")
 }

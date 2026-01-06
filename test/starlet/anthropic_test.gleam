@@ -3,7 +3,10 @@ import gleam/dynamic/decode
 import gleam/json
 import gleam/option.{None, Some}
 import gleam/string
-import starlet.{AssistantMessage, Request, ToolResultMessage, UserMessage}
+import starlet.{
+  AssistantMessage, Base64Image, ImagePart, Request, TextPart, ToolResultMessage,
+  UserMessage,
+}
 import starlet/anthropic
 import starlet/tool
 
@@ -21,7 +24,7 @@ pub fn encode_simple_request_test() {
     Request(
       model: "claude-haiku-4-5-20251001",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -39,7 +42,7 @@ pub fn encode_request_with_system_prompt_test() {
     Request(
       model: "claude-haiku-4-5-20251001",
       system_prompt: Some("Be helpful"),
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -57,7 +60,7 @@ pub fn encode_request_applies_default_max_tokens_test() {
     Request(
       model: "claude-haiku-4-5-20251001",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: None,
@@ -74,7 +77,7 @@ pub fn encode_request_respects_explicit_max_tokens_test() {
     Request(
       model: "claude-haiku-4-5-20251001",
       system_prompt: None,
-      messages: [UserMessage("Hello")],
+      messages: [UserMessage([TextPart("Hello")])],
       tools: [],
       temperature: None,
       max_tokens: Some(1000),
@@ -106,7 +109,7 @@ pub fn encode_request_with_tools_test() {
     Request(
       model: "claude-haiku-4-5-20251001",
       system_prompt: None,
-      messages: [UserMessage("What's the weather?")],
+      messages: [UserMessage([TextPart("What's the weather?")])],
       tools: [weather_tool],
       temperature: None,
       max_tokens: None,
@@ -132,7 +135,7 @@ pub fn encode_request_with_tool_result_test() {
       model: "claude-haiku-4-5-20251001",
       system_prompt: None,
       messages: [
-        UserMessage("What's the weather in Paris?"),
+        UserMessage([TextPart("What's the weather in Paris?")]),
         AssistantMessage("", [tool_call]),
         ToolResultMessage("toolu_123", "get_weather", tool_result),
       ],
@@ -244,7 +247,7 @@ pub fn encode_request_with_thinking_test() {
     Request(
       model: "claude-haiku-4-5-20251001",
       system_prompt: None,
-      messages: [UserMessage("Think step by step")],
+      messages: [UserMessage([TextPart("Think step by step")])],
       tools: [],
       temperature: None,
       max_tokens: Some(32_000),
@@ -257,6 +260,29 @@ pub fn encode_request_with_thinking_test() {
   anthropic.encode_request(req, ext)
   |> json.to_string
   |> birdie.snap("anthropic encode request with thinking")
+}
+
+pub fn encode_request_with_image_test() {
+  let req =
+    Request(
+      model: "claude-haiku-4-5-20251001",
+      system_prompt: None,
+      messages: [
+        UserMessage([
+          TextPart("What's in this image?"),
+          ImagePart(Base64Image("image/jpeg", "base64data...")),
+        ]),
+      ],
+      tools: [],
+      temperature: None,
+      max_tokens: None,
+      json_schema: None,
+      timeout_ms: 60_000,
+    )
+
+  anthropic.encode_request(req, default_ext())
+  |> json.to_string
+  |> birdie.snap("anthropic encode request with image")
 }
 
 pub fn with_thinking_valid_budget_test() {
