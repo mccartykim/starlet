@@ -203,7 +203,7 @@ pub fn main() {
 
   let chat =
     starlet.chat(client, "gpt-oss:20b")
-    |> ollama.with_thinking(True)
+    |> ollama.with_thinking(ollama.ThinkingEnabled)
     |> starlet.user("What is the sum of primes between 1 and 20?")
 
   use #(_chat, turn) <- result.try(starlet.send(chat))
